@@ -20,10 +20,7 @@ install-updater = false
 github-attestations = true
 # Only binary tags trigger dist; library tags (rust-template-core-v…) are released by release-plz.
 tag-namespace = "rust-template-v"
-
-# Pin every action in the generated release workflow to a commit SHA.
-[dist.github-action-commits]
-"actions/checkout" = "d23441a48e516b6c34aea4fa41551a30e30af803" # v6.1.0
-"actions/upload-artifact" = "cf430e030ddbb5b0abf93d22962f4752f3646cd9" # v7.0.2
-"actions/download-artifact" = "9000827ccba6bdab643e8b6fd33ac0654aef8333" # v8.0.2
-"actions/attest" = "1e69f48acb82d1966a394da916b4c1698aa569d6" # v4.2.2
+# Dependabot owns the action SHAs in the generated release workflow (it can't edit this file),
+# so dist must not fail when they differ from what `dist generate` would write. After running
+# `dist generate`, re-pin the actions to SHAs (zizmor in CI flags unpinned ones).
+allow-dirty = ["ci"]
