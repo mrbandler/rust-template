@@ -10,6 +10,8 @@ const USAGE: &str = "usage: cargo xtask init <name> [--lib] [--license dual|mit|
 const TOKEN_KEBAB: &str = "rust-template";
 const TOKEN_SNAKE: &str = "rust_template";
 const TOKEN_LICENSE: &str = "MIT OR Apache-2.0";
+const TOKEN_CORE_KEBAB: &str = "rust-template-core";
+const TOKEN_CORE_SNAKE: &str = "rust_template_core";
 /// Directories never rewritten by `init`.
 const SKIP_DIRS: &[&str] = &[".git", "target", "xtask", ".devenv", ".direnv", ".jj", "book"];
 
@@ -126,10 +128,19 @@ fn apply_markers(text: &str, keep: impl Fn(&str) -> bool) -> Result<String, Stri
     }
 }
 
-fn replace_tokens(text: &str, name: &str, license: License) -> String {
+fn replace_tokens(text: &str, opts: &Options) -> String {
+    let name = &opts.name;
+    let snake = name.replace('-', "_");
+    // A library-only project has a single crate named after the project, not `<name>-core`.
+    let text = if opts.lib {
+        text.replace(TOKEN_CORE_KEBAB, name)
+            .replace(TOKEN_CORE_SNAKE, &snake)
+    } else {
+        text.to_owned()
+    };
     text.replace(TOKEN_KEBAB, name)
-        .replace(TOKEN_SNAKE, &name.replace('-', "_"))
-        .replace(TOKEN_LICENSE, license.spdx())
+        .replace(TOKEN_SNAKE, &snake)
+        .replace(TOKEN_LICENSE, opts.license.spdx())
 }
 
 fn keep_group(group: &str, opts: &Options) -> bool {
@@ -190,8 +201,13 @@ fn wix_guids(cargo_toml: &str) -> Vec<String> {
 fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
+        let kind = entry.file_type()?; // does not follow symlinks
+        // `.git` is a file in worktrees and submodules; symlinks would rewrite their targets.
+        if entry.file_name() == ".git" || kind.is_symlink() {
+            continue;
+        }
         let path = entry.path();
-        if entry.file_type()?.is_dir() {
+        if kind.is_dir() {
             let skipped = entry
                 .file_name()
                 .to_str()
@@ -262,7 +278,7 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
         let Ok(text) = fs::read_to_string(&path) else { continue }; // binary file
         let stripped = apply_markers(&text, |group| keep_group(group, opts))
             .map_err(|err| format!("{}: {err}", path.display()))?;
-        let mut new = replace_tokens(&stripped, &opts.name, opts.license);
+        let mut new = replace_tokens(&stripped, opts);
         for (old, fresh) in &guid_swaps {
             new = new
                 .replace(old, fresh)
@@ -313,10 +329,12 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
     }
 
     let crates = root.join("crates");
-    rename(
-        &crates.join("rust-template-core"),
-        &crates.join(format!("{}-core", opts.name)),
-    )?;
+    let core = if opts.lib {
+        opts.name.clone()
+    } else {
+        format!("{}-core", opts.name)
+    };
+    rename(&crates.join("rust-template-core"), &crates.join(core))?;
     if !opts.lib {
         rename(&crates.join("rust-template"), &crates.join(&opts.name))?;
         // dist names it after `tag-namespace` in dist-workspace.toml.
@@ -468,10 +486,38 @@ mod tests {
     #[test]
     fn replaces_all_tokens() {
         let text = "rust-template rust-template-core rust_template_core license = \"MIT OR Apache-2.0\"";
+        let mut opts = Options {
+            name: "foo-bar".into(),
+            lib: false,
+            license: License::Agpl,
+        };
         assert_eq!(
-            replace_tokens(text, "foo-bar", License::Agpl),
+            replace_tokens(text, &opts),
             "foo-bar foo-bar-core foo_bar_core license = \"AGPL-3.0-or-later\""
         );
+        opts.lib = true;
+        assert_eq!(
+            replace_tokens(text, &opts),
+            "foo-bar foo-bar foo_bar license = \"AGPL-3.0-or-later\""
+        );
+    }
+
+    #[test]
+    fn collect_files_skips_git_entries_and_symlinks() {
+        let root = env::temp_dir().join(format!("xtask-collect-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("sub")).unwrap();
+        fs::write(root.join("sub/.git"), "gitdir: ../rust-template\n").unwrap();
+        fs::write(root.join("a.txt"), "a").unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(root.join("a.txt"), root.join("link.txt")).unwrap();
+            std::os::unix::fs::symlink(root.join("sub"), root.join("linkdir")).unwrap();
+        }
+        let mut files = Vec::new();
+        collect_files(&root, &mut files).unwrap();
+        assert_eq!(files, [root.join("a.txt")]);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -621,14 +667,17 @@ mod tests {
             "members = [\n]\nlicense = \"AGPL-3.0-or-later\"\n"
         );
         assert_eq!(read(&root, "README.md"), "# demo\ncla\n");
+        assert_eq!(read(&root, "crates/demo/src/lib.rs"), "//! demo\n");
         assert_eq!(read(&root, "LICENSE"), "agpl");
         assert_eq!(read(&root, "CLA.md"), "cla");
         assert_eq!(read(&root, ".github/workflows/cla.yml"), "name: CLA\n");
         for gone in [
             "LICENSE-MIT",
             "LICENSE-APACHE",
-            "crates/demo",
+            "crates/demo-core",
+            "crates/demo/src/main.rs",
             "crates/rust-template",
+            "crates/rust-template-core",
             "dist-workspace.toml",
             RELEASE_WORKFLOW,
             ".github/zizmor.yml",
