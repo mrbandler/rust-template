@@ -25,7 +25,9 @@ body:
       description: Which part of rust-template does this feature relate to?
       options:
         - Library (rust-template-core)
+        # init:bin:start
         - CLI (rust-template)
+        # init:bin:end
         - Documentation
         - Other
     validations:
