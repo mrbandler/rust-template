@@ -280,6 +280,8 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
             "crates/rust-template",
             "dist-workspace.toml",
             ".github/workflows/release.yml",
+            // Only holds ignores for the dist-generated release.yml.
+            ".github/zizmor.yml",
             "flake.nix",
             "flake.lock",
         ]);
@@ -519,6 +521,7 @@ mod tests {
             (".cargo/config.toml", ""),
             (".github/workflows/template.yml", ""),
             (".github/workflows/release.yml", ""),
+            (".github/zizmor.yml", ""),
             ("crates/rust-template-core/src/lib.rs", "//! rust_template_core\n"),
             ("crates/rust-template/src/main.rs", "use rust_template_core;\n"),
             (
@@ -617,6 +620,7 @@ mod tests {
             "crates/rust-template",
             "dist-workspace.toml",
             ".github/workflows/release.yml",
+            ".github/zizmor.yml",
             "flake.nix",
             "flake.lock",
             "xtask",

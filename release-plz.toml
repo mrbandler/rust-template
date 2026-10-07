@@ -1,0 +1,39 @@
+# https://release-plz.dev/docs/config
+[workspace]
+# Publish only when the release PR is merged, never on ordinary merges.
+release_always = false
+# Keep `<crate>-v<version>` tags even when only one crate is published (dist matches on them).
+git_tag_name = "{{ package }}-v{{ version }}"
+pr_labels = ["release"]
+# init:bin:start
+# Library releases must never become "latest": README installer links use
+# releases/latest/download/…, which only the dist (binary) release has assets for.
+git_release_latest = false
+# init:bin:end
+
+[changelog]
+protect_breaking_commits = true
+commit_parsers = [
+    { message = "^feat", group = "<!-- 0 -->🚀 Features" },
+    { message = "^fix", group = "<!-- 1 -->🐛 Bug Fixes" },
+    { message = "^perf", group = "<!-- 2 -->⚡ Performance" },
+    { message = "^doc", group = "<!-- 3 -->📚 Documentation" },
+    { message = "^refactor", group = "<!-- 4 -->♻️ Refactoring" },
+    { message = "^test", group = "<!-- 5 -->🧪 Testing" },
+    { message = "^build", group = "<!-- 6 -->🏗️ Build System" },
+    { message = "^ci", group = "<!-- 7 -->👷 CI/CD" },
+    { message = "^chore\\((release|deps)\\)", skip = true },
+    { message = "^chore", group = "<!-- 8 -->🔧 Miscellaneous" },
+    { message = "^revert", group = "<!-- 9 -->⏪ Reverts" },
+]
+# init:bin:start
+
+# The binary is not published to crates.io (publish = false). git_only makes release-plz still
+# version, changelog and tag it; dist then builds the GitHub Release from that tag.
+[[package]]
+name = "rust-template"
+git_only = true
+git_release_enable = false
+# dist takes the GitHub Release notes from a top-level CHANGELOG.md.
+changelog_path = "./CHANGELOG.md"
+# init:bin:end

@@ -68,7 +68,8 @@ the binaries and installers.
 One-time setup per repository:
 
 1. Create a GitHub App (once per account) with *Contents* and *Pull requests* read/write,
-   install it on the repo, and add the secrets `APP_ID` and `APP_PRIVATE_KEY`.
+   install it on the repo, and add the secrets `APP_CLIENT_ID` (the App's Client ID) and
+   `APP_PRIVATE_KEY`.
 2. Create an environment named `release` (Settings → Environments).
 3. Publish each crate once by hand: `cargo publish -p rust-template-core`.
 4. On crates.io, add a trusted publisher for each crate: this repo, workflow `release-plz.yml`,

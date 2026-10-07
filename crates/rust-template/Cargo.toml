@@ -24,3 +24,9 @@ workspace = true
 # dist skips `publish = false` packages unless told otherwise.
 [package.metadata.dist]
 dist = true
+
+[package.metadata.wix]
+upgrade-guid = "CB986D74-F058-40E3-B4E2-D38D1B341B2B"
+path-guid = "2DCF68D7-579B-4379-B289-F1BADDEDCCD6"
+license = false
+eula = false

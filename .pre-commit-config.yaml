@@ -2,8 +2,8 @@
 # All hooks are native: no Python or Node needed.
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 default_stages: [pre-commit]
-# Tool-generated lockfiles are rewritten by their tools.
-exclude: ^(devenv|flake)\.lock$
+# Tool-generated files are rewritten by their tools (dist checks main.wxs is byte-identical).
+exclude: ^((devenv|flake)\.lock|crates/[^/]+/wix/main\.wxs)$
 
 repos:
   - repo: builtin
