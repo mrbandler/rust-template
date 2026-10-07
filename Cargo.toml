@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = [
+    "crates/*",
+    # init:template:start
+    "xtask",
+    # init:template:end
+]
 
 [workspace.package]
 version = "0.1.0"
