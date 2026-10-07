@@ -1,6 +1,6 @@
 # --- Rust / Cargo --------------------------------------------------------
 /target/
-debug/
+/debug/
 **/*.rs.bk
 *.pdb
 rust-project.json
@@ -23,8 +23,8 @@ tarpaulin-report.html
 .devenv*
 devenv.local.nix
 .direnv/
-result
-result-*
+/result
+/result-*
 
 # --- Local environment ---------------------------------------------------
 .env
@@ -48,7 +48,7 @@ result-*
 [._]sw[a-p]
 Session.vim
 .netrwhist
-tags
+/tags
 *~
 \#*\#
 .\#*

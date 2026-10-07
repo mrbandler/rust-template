@@ -42,7 +42,8 @@ book:
 # Run everything CI runs
 check: lint test features deps doc
 
-# Apply GitHub repo settings: main ruleset, squash-only merges, Pages via Actions (needs gh)
+# Apply GitHub repo settings: main ruleset, squash-only merges, Pages via Actions (needs gh).
+# One-shot: re-running fails (ruleset name exists -> 422, Pages already enabled -> 409).
 gh-setup:
     gh api --method POST "repos/{owner}/{repo}/rulesets" --input .github/rulesets/main.json
     gh api --method PATCH "repos/{owner}/{repo}" -F allow_squash_merge=true -F allow_merge_commit=false -F allow_rebase_merge=false -F delete_branch_on_merge=true -f squash_merge_commit_title=PR_TITLE -f squash_merge_commit_message=PR_BODY

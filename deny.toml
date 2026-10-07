@@ -14,7 +14,7 @@ exclude-dev = true
 [advisories]
 unmaintained = "workspace"
 unsound = "workspace"
-yanked = "warn"
+yanked = "deny"
 ignore = []
 
 [licenses]
@@ -44,9 +44,11 @@ ignore = true
 
 [bans]
 multiple-versions = "allow"
-wildcards = "allow"
+wildcards = "deny"
+# Path dependencies of the workspace itself are fine.
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"
-unknown-git = "warn"
+unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]

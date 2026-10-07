@@ -31,7 +31,7 @@ jobs:
       - uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
       - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
-          tool: cargo-deny,cargo-shear
+          tool: prek,typos,zizmor,cargo-deny,cargo-shear
       - name: xtask unit tests
         run: cargo test -p xtask
       - name: Run init
@@ -46,6 +46,11 @@ jobs:
             echo "template leftovers found"; exit 1
           fi
           test ! -e xtask && test ! -e .cargo && test ! -e .github/workflows/template.yml
+      - name: Pre-commit hooks on the initialized project
+        shell: bash
+        run: git add -A && prek run --all-files # prek only sees tracked files
+        env:
+          SKIP: no-commit-to-branch
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - run: cargo test --workspace --all-features
       - run: cargo shear
