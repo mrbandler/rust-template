@@ -8,8 +8,10 @@
 > ```
 >
 > `--lib` drops the binary crate and binary releases. `--license agpl` also adds a CLA.
-> `init` renames everything, strips this section, and deletes itself. Then follow
-> [Releasing](#releasing) once and run `just gh-setup`.
+> `init` renames everything, strips this section, and deletes itself. Commit the result on a
+> branch and open a PR: commits to `main` are blocked by a hook (and by the ruleset once
+> `just gh-setup` ran). Then follow [Releasing](#releasing) once; until that setup is done the
+> release-plz and docs workflow runs fail.
 <!-- init:template:end -->
 
 Short description of rust-template.

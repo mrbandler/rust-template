@@ -1,4 +1,4 @@
-//! Core library of `rust-template`.
+//! The `rust-template` library.
 
 mod error;
 

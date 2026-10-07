@@ -1,6 +1,6 @@
 [package]
 name = "rust-template-core"
-description = "Core library of rust-template."
+description = "The rust-template library."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

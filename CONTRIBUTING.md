@@ -23,7 +23,10 @@ Both install the git hooks: fast checks on commit, tests and dependency checks o
 
 - `cargo fmt` and `cargo clippy` (pedantic) must pass; CI treats warnings as errors.
 - `unsafe` code is forbidden.
-- Libraries return typed errors (`thiserror` + `miette::Diagnostic`); binaries render them with `miette`.
+- Libraries return typed errors (`thiserror` + `miette::Diagnostic`).
+<!-- init:bin:start -->
+- Binaries render errors with `miette`.
+<!-- init:bin:end -->
 - Public items need doc comments; examples in docs are tested.
 - Features must be additive; CI checks each feature on its own.
 <!-- init:dual:start -->
