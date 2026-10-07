@@ -1,0 +1,26 @@
+[package]
+name = "rust-template"
+description = "Command-line interface of rust-template."
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+
+[dependencies]
+rust-template-core.workspace = true
+clap.workspace = true
+miette = { workspace = true, features = ["fancy"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true
+
+# dist skips `publish = false` packages unless told otherwise.
+[package.metadata.dist]
+dist = true
