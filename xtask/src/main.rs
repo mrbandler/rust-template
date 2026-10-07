@@ -143,6 +143,14 @@ fn replace_tokens(text: &str, opts: &Options) -> String {
         .replace(TOKEN_LICENSE, opts.license.spdx())
 }
 
+/// Removes the `[[package]]` entry named `name` from a `Cargo.lock`.
+fn drop_lock_package(lock: &str, name: &str) -> String {
+    let entry = format!("[[package]]\nname = \"{name}\"\n");
+    lock.split_inclusive("\n\n")
+        .filter(|block| !block.starts_with(&entry))
+        .collect()
+}
+
 fn keep_group(group: &str, opts: &Options) -> bool {
     match group {
         "template" => false,
@@ -276,7 +284,13 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
     let mut rewrites = Vec::new();
     for path in files {
         let Ok(text) = fs::read_to_string(&path) else { continue }; // binary file
-        let stripped = apply_markers(&text, |group| keep_group(group, opts))
+        // With `--lib` the binary and core crate would both be renamed to `<name>`: drop the binary.
+        let source = if opts.lib && path == root.join("Cargo.lock") {
+            drop_lock_package(&text, TOKEN_KEBAB)
+        } else {
+            text.clone()
+        };
+        let stripped = apply_markers(&source, |group| keep_group(group, opts))
             .map_err(|err| format!("{}: {err}", path.display()))?;
         let mut new = replace_tokens(&stripped, opts);
         for (old, fresh) in &guid_swaps {
@@ -554,6 +568,15 @@ mod tests {
         assert_eq!(wix_guids(toml), ["AAA", "BBB"]);
     }
 
+    #[test]
+    fn drops_one_lock_package() {
+        let lock = "version = 4\n\n[[package]]\nname = \"rust-template\"\nversion = \"0.1.0\"\n\n[[package]]\nname = \"rust-template-core\"\nversion = \"0.1.0\"\n";
+        assert_eq!(
+            drop_lock_package(lock, "rust-template"),
+            "version = 4\n\n[[package]]\nname = \"rust-template-core\"\nversion = \"0.1.0\"\n"
+        );
+    }
+
     /// Builds a minimal template tree in a fresh temp dir.
     fn fixture(tag: &str) -> PathBuf {
         let root = env::temp_dir().join(format!("xtask-fixture-{tag}-{}", std::process::id()));
@@ -566,6 +589,10 @@ mod tests {
             (
                 "README.md",
                 "# rust-template\n<!-- init:dual:start -->\ndual\n<!-- init:dual:end -->\n<!-- init:agpl:start -->\ncla\n<!-- init:agpl:end -->\n",
+            ),
+            (
+                "Cargo.lock",
+                "[[package]]\nname = \"rust-template\"\n\n[[package]]\nname = \"rust-template-core\"\n",
             ),
             ("LICENSE-MIT", "mit"),
             ("LICENSE-APACHE", "apache"),
@@ -621,6 +648,10 @@ mod tests {
         );
         assert_eq!(read(&root, "README.md"), "# demo\ndual\n");
         assert_eq!(read(&root, "crates/demo/src/main.rs"), "use demo_core;\n");
+        assert_eq!(
+            read(&root, "Cargo.lock"),
+            "[[package]]\nname = \"demo\"\n\n[[package]]\nname = \"demo-core\"\n"
+        );
         assert!(root.join("crates/demo-core/src/lib.rs").is_file());
         assert!(root.join("LICENSE-MIT").is_file() && root.join("LICENSE-APACHE").is_file());
         assert!(root.join("dist-workspace.toml").is_file());
@@ -668,6 +699,7 @@ mod tests {
         );
         assert_eq!(read(&root, "README.md"), "# demo\ncla\n");
         assert_eq!(read(&root, "crates/demo/src/lib.rs"), "//! demo\n");
+        assert_eq!(read(&root, "Cargo.lock"), "[[package]]\nname = \"demo\"\n");
         assert_eq!(read(&root, "LICENSE"), "agpl");
         assert_eq!(read(&root, "CLA.md"), "cla");
         assert_eq!(read(&root, ".github/workflows/cla.yml"), "name: CLA\n");
