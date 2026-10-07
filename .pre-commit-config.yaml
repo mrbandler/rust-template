@@ -1,0 +1,78 @@
+# Hooks run by prek (https://prek.j178.dev) locally and in CI.
+# All hooks are native: no Python or Node needed.
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+default_stages: [pre-commit]
+# Tool-generated lockfiles are rewritten by their tools.
+exclude: ^(devenv|flake)\.lock$
+
+repos:
+  - repo: builtin
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-illegal-windows-names
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: [--branch, main]
+      - id: require-pattern
+        name: conventional commit message
+        stages: [commit-msg]
+        args:
+          - '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([\w./-]+\))?!?: \S'
+          - '^(fixup|squash|amend)! '
+
+  - repo: local
+    hooks:
+      - id: typos
+        name: typos
+        entry: typos --force-exclude
+        language: system
+        types: [text]
+      - id: zizmor
+        name: zizmor
+        entry: zizmor
+        language: system
+        files: ^\.github/workflows/.*\.ya?ml$
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all --
+        language: system
+        types: [rust]
+        pass_filenames: false
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+      - id: cargo-nextest
+        name: cargo nextest
+        entry: cargo nextest run --workspace --all-features
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+      - id: cargo-deny
+        name: cargo deny
+        entry: cargo deny check
+        language: system
+        files: (^|/)Cargo\.(toml|lock)$|^deny\.toml$
+        pass_filenames: false
+        stages: [pre-push]
+      - id: cargo-shear
+        name: cargo shear
+        entry: cargo shear
+        language: system
+        files: (^|/)Cargo\.toml$|\.rs$
+        pass_filenames: false
+        stages: [pre-push]
