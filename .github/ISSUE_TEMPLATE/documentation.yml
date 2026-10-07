@@ -1,0 +1,71 @@
+name: Documentation
+description: Report missing, incorrect, or unclear documentation
+labels: ["docs"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve rust-template's documentation!
+
+  - type: dropdown
+    id: doc-type
+    attributes:
+      label: Documentation Type
+      description: What type of documentation is this about?
+      options:
+        - README
+        - API/Code documentation
+        - Examples
+        - CONTRIBUTING guide
+        - Book / Tutorials
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue Type
+      description: What's the problem with the documentation?
+      options:
+        - Missing documentation
+        - Incorrect/outdated information
+        - Unclear/confusing explanation
+        - Typo/grammar error
+        - Broken link
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Location
+      description: Where is the documentation located? (file path, URL, or section name)
+      placeholder: e.g., README.md, docs/src/introduction.md
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: Current Documentation
+      description: What does the documentation currently say? (if applicable)
+      placeholder: Paste the current text or describe what's there
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected/Suggested Documentation
+      description: What should the documentation say instead?
+      placeholder: Describe or write out what you think the documentation should be
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context that would help us improve the documentation
+      placeholder: Why is this change needed? What were you trying to do when you found this issue?
