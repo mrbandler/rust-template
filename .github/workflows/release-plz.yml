@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
-      - uses: release-plz/action@51e32d708d306b2c2e98540245b276439f3137c3 # v0.5.139
+      - uses: release-plz/action@b8d6b54b02889ff2ae2bb82e8b57c3a8fc1683a5 # v0.5.139
         with:
           command: release
         env:
@@ -63,7 +63,7 @@ jobs:
           persist-credentials: false
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
-      - uses: release-plz/action@51e32d708d306b2c2e98540245b276439f3137c3 # v0.5.139
+      - uses: release-plz/action@b8d6b54b02889ff2ae2bb82e8b57c3a8fc1683a5 # v0.5.139
         with:
           command: release-pr
         env:
