@@ -50,7 +50,19 @@ gh-setup:
     gh api --method POST "repos/{owner}/{repo}/pages" -f build_type=workflow
 # init:template:start
 
-# Turn this template into a new project: just init <name> [--lib] [--license dual|mit|apache|agpl] [--owner <github-user>] [--author "Name <email>"]
+# Arguments are passed through as-is (not via {{ }}), so quoted values with spaces survive.
+# Turn this template into a new project (see README.md for the options)
+[positional-arguments]
+[unix]
 init *ARGS:
-    cargo xtask init {{ ARGS }}
+    cargo xtask init "$@"
+
+# `pwsh -Command` would join the arguments back into one string; a script gets them as `$args`.
+[positional-arguments]
+[windows]
+[script("pwsh", "-NoLogo", "-NoProfile")]
+[extension(".ps1")]
+init *ARGS:
+    cargo xtask init @args
+    exit $LASTEXITCODE
 # init:template:end
