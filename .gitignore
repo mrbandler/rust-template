@@ -1,0 +1,72 @@
+# --- Rust / Cargo --------------------------------------------------------
+/target/
+debug/
+**/*.rs.bk
+*.pdb
+rust-project.json
+
+# --- Build output --------------------------------------------------------
+/docs/book/
+/dist/
+
+# --- Coverage & profiling ------------------------------------------------
+*.profraw
+*.profdata
+lcov.info
+tarpaulin-report.html
+
+# --- Snapshot tests (insta) ----------------------------------------------
+*.snap.new
+*.pending-snap
+
+# --- Nix / devenv / direnv -----------------------------------------------
+.devenv*
+devenv.local.nix
+.direnv/
+result
+result-*
+
+# --- Local environment ---------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Editors -------------------------------------------------------------
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/
+.idea/
+*.iml
+[._]*.s[a-v][a-z]
+!*.svg
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+.netrwhist
+tags
+*~
+\#*\#
+.\#*
+
+# --- OS ------------------------------------------------------------------
+.DS_Store
+._*
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# --- VCS & agents --------------------------------------------------------
+.jj/
+.claude/
+.remember/
