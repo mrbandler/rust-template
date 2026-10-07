@@ -62,7 +62,7 @@ Commits to `main` are blocked, so work on a branch:
 
 ```sh
 git switch -c chore/init
-just init <name> [--lib] [--license dual|mit|apache|agpl] [--owner <github-user>] [--author "Name <email>"]
+just init <name> [--lib] [--license dual|mit|apache|agpl] [--owner <github-user>] [--author-name <name>] [--author-email <email>]
 ```
 
 | Option | Effect |
@@ -72,7 +72,8 @@ just init <name> [--lib] [--license dual|mit|apache|agpl] [--owner <github-user>
 | `--license mit` / `apache` | Single license instead of the dual MIT OR Apache-2.0. |
 | `--license agpl` | AGPL-3.0-or-later, plus a CLA (`CLA.md`) and a workflow that asks contributors to sign it. |
 | `--owner <github-user>` | GitHub user or org for repo URLs, install commands and the Homebrew tap. Default: read from the `origin` remote. |
-| `--author "Name <email>"` | Name and email for `authors`, the licenses, `SECURITY.md`, the code of conduct and the MSI. Default: `git config user.name` / `user.email`. |
+| `--author-name <name>` | Your name for `authors`, the licenses, the code of conduct, the docs and the MSI. Default: `git config user.name`. |
+| `--author-email <email>` | Your email for `authors`, `SECURITY.md` and the code of conduct. Default: `git config user.email`. |
 
 `init` replaces `rust-template` everywhere (crate names, docs, workflows) and the template
 author's name, email and GitHub user with yours, removes the parts you didn't choose, sets up the license files, generates fresh MSI GUIDs, deletes this section and

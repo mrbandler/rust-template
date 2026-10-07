@@ -6,7 +6,7 @@ use std::{
     process::{Command, ExitCode},
 };
 
-const USAGE: &str = "usage: cargo xtask init <name> [--lib] [--license dual|mit|apache|agpl] [--owner <github-user>] [--author \"Name <email>\"]";
+const USAGE: &str = "usage: cargo xtask init <name> [--lib] [--license dual|mit|apache|agpl] [--owner <github-user>] [--author-name <name>] [--author-email <email>]";
 const TOKEN_KEBAB: &str = "rust-template";
 const TOKEN_SNAKE: &str = "rust_template";
 const TOKEN_LICENSE: &str = "MIT OR Apache-2.0";
@@ -56,15 +56,15 @@ struct Author {
 }
 
 impl Author {
-    fn parse(text: &str) -> Result<Self, String> {
-        let invalid = || format!("invalid author `{text}`: expected `Name <email>`");
-        let (name, rest) = text.trim().split_once('<').ok_or_else(invalid)?;
-        let email = rest.strip_suffix('>').ok_or_else(invalid)?.trim();
-        let name = name.trim();
-        // Both end up inside TOML and YAML strings.
+    fn new(name: &str, email: &str) -> Result<Self, String> {
+        let (name, email) = (name.trim(), email.trim());
+        // Both end up inside TOML and YAML strings, and as `Name <email>` in `authors`.
         let clean = |part: &str| !part.is_empty() && !part.contains(['"', '\\', '<', '>', '\n']);
-        if !clean(name) || !clean(email) || !email.contains('@') {
-            return Err(invalid());
+        if !clean(name) {
+            return Err(format!("invalid author name `{name}`"));
+        }
+        if !clean(email) || !email.contains('@') {
+            return Err(format!("invalid author email `{email}`"));
         }
         Ok(Self {
             name: name.to_owned(),
@@ -83,20 +83,23 @@ struct Options {
 }
 
 /// Parses `init` arguments. `git` runs a git command and returns its trimmed output; it supplies
-/// the defaults for `--owner` (the `origin` remote) and `--author` (`user.name`, `user.email`).
+/// the defaults for `--owner` (the `origin` remote), `--author-name` (`user.name`) and
+/// `--author-email` (`user.email`).
 fn parse_args(args: &[String], git: impl Fn(&[&str]) -> Option<String>) -> Result<Options, String> {
     let mut name = None;
     let mut lib = false;
     let mut license = License::Dual;
     let mut owner = None;
-    let mut author = None;
+    let mut author_name = None;
+    let mut author_email = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--lib" => lib = true,
             "--license" => license = License::parse(iter.next().ok_or("`--license` needs a value")?)?,
             "--owner" => owner = Some(iter.next().ok_or("`--owner` needs a value")?.clone()),
-            "--author" => author = Some(iter.next().ok_or("`--author` needs a value")?.clone()),
+            "--author-name" => author_name = Some(iter.next().ok_or("`--author-name` needs a value")?.clone()),
+            "--author-email" => author_email = Some(iter.next().ok_or("`--author-email` needs a value")?.clone()),
             flag if flag.starts_with('-') => return Err(format!("unknown flag `{flag}`\n{USAGE}")),
             value if name.is_none() => name = Some(value.to_owned()),
             value => return Err(format!("unexpected argument `{value}`\n{USAGE}")),
@@ -108,14 +111,13 @@ fn parse_args(args: &[String], git: impl Fn(&[&str]) -> Option<String>) -> Resul
         .or_else(|| owner_from_remote(&git(&["remote", "get-url", "origin"])?))
         .ok_or("can't detect your GitHub user from the `origin` remote: pass `--owner <github-user>`")?;
     validate_owner(&owner)?;
-    let author = match author {
-        Some(author) => author,
-        None => match (git(&["config", "user.name"]), git(&["config", "user.email"])) {
-            (Some(name), Some(email)) => format!("{name} <{email}>"),
-            _ => return Err("git `user.name`/`user.email` not set: pass `--author \"Name <email>\"`".into()),
-        },
-    };
-    let author = Author::parse(&author)?;
+    let author_name = author_name
+        .or_else(|| git(&["config", "user.name"]))
+        .ok_or("git `user.name` is not set: pass `--author-name <name>`")?;
+    let author_email = author_email
+        .or_else(|| git(&["config", "user.email"]))
+        .ok_or("git `user.email` is not set: pass `--author-email <email>`")?;
+    let author = Author::new(&author_name, &author_email)?;
     Ok(Options {
         name,
         lib,
@@ -358,6 +360,11 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
             .collect()
     };
 
+    println!(
+        "Initializing `{}` for {} <{}> (github.com/{})",
+        opts.name, opts.author.name, opts.author.email, opts.owner
+    );
+
     // Pass 1: compute every rewrite first so a marker error leaves the tree untouched.
     let mut files = Vec::new();
     collect_files(root, &mut files).map_err(io_err(root))?;
@@ -383,6 +390,7 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
         }
     }
     // Pass 2: write.
+    println!("  rewriting {} files", rewrites.len());
     for (path, text) in rewrites {
         fs::write(&path, text).map_err(io_err(&path))?;
     }
@@ -400,9 +408,42 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
         ]);
     }
     for path in doomed {
+        println!("  removing {path}");
         remove(&root.join(path))?;
     }
 
+    apply_license(root, &assets, opts)?;
+
+    let crates = root.join("crates");
+    let core = if opts.lib {
+        opts.name.clone()
+    } else {
+        format!("{}-core", opts.name)
+    };
+    println!(
+        "  crates: {core}{}",
+        if opts.lib {
+            String::new()
+        } else {
+            format!(", {}", opts.name)
+        }
+    );
+    rename(&crates.join("rust-template-core"), &crates.join(core))?;
+    if !opts.lib {
+        rename(&crates.join("rust-template"), &crates.join(&opts.name))?;
+        // dist names it after `tag-namespace` in dist-workspace.toml.
+        rename(
+            &root.join(RELEASE_WORKFLOW),
+            &root.join(format!(".github/workflows/{}-v-release.yml", opts.name)),
+        )?;
+    }
+    println!("  removing xtask");
+    remove(&root.join("xtask"))
+}
+
+/// Keeps or swaps in the license files for the chosen license.
+fn apply_license(root: &Path, assets: &Path, opts: &Options) -> Result<(), String> {
+    println!("  license: {}", opts.license.spdx());
     match opts.license {
         License::Dual => {},
         License::Mit => {
@@ -421,23 +462,7 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
             copy_asset(&assets.join("cla.yml"), &root.join(".github/workflows/cla.yml"), opts)?;
         },
     }
-
-    let crates = root.join("crates");
-    let core = if opts.lib {
-        opts.name.clone()
-    } else {
-        format!("{}-core", opts.name)
-    };
-    rename(&crates.join("rust-template-core"), &crates.join(core))?;
-    if !opts.lib {
-        rename(&crates.join("rust-template"), &crates.join(&opts.name))?;
-        // dist names it after `tag-namespace` in dist-workspace.toml.
-        rename(
-            &root.join(RELEASE_WORKFLOW),
-            &root.join(format!(".github/workflows/{}-v-release.yml", opts.name)),
-        )?;
-    }
-    remove(&root.join("xtask"))
+    Ok(())
 }
 
 /// Runs git in `root` and returns its trimmed output, if it succeeded and printed something.
@@ -460,9 +485,10 @@ fn main() -> ExitCode {
     let result = match args.split_first() {
         Some((cmd, rest)) if cmd == "init" => parse_args(rest, |args| git(root, args)).and_then(|opts| {
             init(root, &opts)?;
+            println!("Running `cargo check` (the first run compiles all dependencies)");
             let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".into());
             let ok = Command::new(cargo)
-                .args(["check", "--workspace", "--quiet"])
+                .args(["check", "--workspace"])
                 .current_dir(root)
                 .status()
                 .is_ok_and(|status| status.success());
@@ -477,7 +503,11 @@ fn main() -> ExitCode {
     match result {
         Ok(opts) => {
             println!(
-                "Initialized `{}`. Next steps: see README.md (Releasing) and run `just gh-setup`.",
+                "\nInitialized `{}`. Next steps:\n  \
+                 1. Review the changes and run `just check`\n  \
+                 2. Commit them on a branch and open a PR (conventional title, e.g. `chore: initialize from template`)\n  \
+                 3. Run `just gh-setup` once, if you haven't yet\n  \
+                 4. Do the one-time release setup in README.md (Releasing)",
                 opts.name
             );
             ExitCode::SUCCESS
@@ -559,8 +589,10 @@ mod tests {
             "agpl",
             "--owner",
             "me",
-            "--author",
-            " Me Too <me@x.dev> ",
+            "--author-name",
+            " Me Too ",
+            "--author-email",
+            "me@x.dev",
         ];
         let opts = parse_args(&args(&list), |_| None).unwrap();
         assert_eq!(
@@ -578,8 +610,13 @@ mod tests {
 
     #[test]
     fn requires_owner_and_author_without_git() {
-        assert!(parse_args(&args(&["demo", "--author", "A <a@b>"]), |_| None).is_err());
-        assert!(parse_args(&args(&["demo", "--owner", "me"]), |_| None).is_err());
+        let all = ["demo", "--owner", "me", "--author-name", "A", "--author-email", "a@b"];
+        assert!(parse_args(&args(&all), |_| None).is_ok());
+        for skip in [1, 3, 5] {
+            let mut list = all.to_vec();
+            list.drain(skip..skip + 2);
+            assert!(parse_args(&args(&list), |_| None).is_err(), "{list:?}");
+        }
     }
 
     #[test]
@@ -600,8 +637,15 @@ mod tests {
         for owner in ["", "-x", "a/b", "a b", "a\"b"] {
             assert!(validate_owner(owner).is_err(), "{owner}");
         }
-        for author in ["Name", "Name <>", "<a@b>", "Name <ab>", "Na\"me <a@b>", "Name a@b>"] {
-            assert!(Author::parse(author).is_err(), "{author}");
+        for (name, email) in [
+            ("", "a@b"),
+            ("Na\"me", "a@b"),
+            ("<x>", "a@b"),
+            ("A", ""),
+            ("A", "ab"),
+            ("A", "<a@b>"),
+        ] {
+            assert!(Author::new(name, email).is_err(), "{name} {email}");
         }
     }
 
@@ -615,7 +659,7 @@ mod tests {
             &["demo", "--x"],
             &["a", "b"],
             &["demo", "--owner"],
-            &["demo", "--author"],
+            &["demo", "--author-name"],
         ];
         for list in cases {
             assert!(parse_args(&args(list), fake_git).is_err(), "{list:?}");
