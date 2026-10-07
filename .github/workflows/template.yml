@@ -36,13 +36,14 @@ jobs:
         run: cargo test -p xtask
       - name: Run init
         shell: bash
-        run: cargo xtask init $INIT_ARGS # unquoted on purpose: split into arguments
+        # INIT_ARGS unquoted on purpose: split into arguments. No git user on the runner: pass --author.
+        run: cargo xtask init $INIT_ARGS --owner octo-org --author "Octo Cat <octo@example.com>"
         env:
           INIT_ARGS: ${{ matrix.args }}
       - name: No template leftovers
         shell: bash
         run: |
-          if grep -rnI --exclude-dir=target --exclude-dir=.git -e 'rust-template' -e 'rust_template' -e 'init:[a-z]*:' .; then
+          if grep -rnI --exclude-dir=target --exclude-dir=.git -e 'rust-template' -e 'rust_template' -e 'init:[a-z]*:' -e 'mrbandler' -e 'Michael Baudler' .; then
             echo "template leftovers found"; exit 1
           fi
           test ! -e xtask && test ! -e .cargo && test ! -e .github/workflows/template.yml

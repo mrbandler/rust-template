@@ -6,12 +6,15 @@ use std::{
     process::{Command, ExitCode},
 };
 
-const USAGE: &str = "usage: cargo xtask init <name> [--lib] [--license dual|mit|apache|agpl]";
+const USAGE: &str = "usage: cargo xtask init <name> [--lib] [--license dual|mit|apache|agpl] [--owner <github-user>] [--author \"Name <email>\"]";
 const TOKEN_KEBAB: &str = "rust-template";
 const TOKEN_SNAKE: &str = "rust_template";
 const TOKEN_LICENSE: &str = "MIT OR Apache-2.0";
 const TOKEN_CORE_KEBAB: &str = "rust-template-core";
 const TOKEN_CORE_SNAKE: &str = "rust_template_core";
+const TOKEN_OWNER: &str = "mrbandler";
+const TOKEN_AUTHOR_NAME: &str = "Michael Baudler";
+const TOKEN_AUTHOR_EMAIL: &str = "hello@mrbandler.dev";
 /// Directories never rewritten by `init`.
 const SKIP_DIRS: &[&str] = &[".git", "target", "xtask", ".devenv", ".direnv", ".jj", "book"];
 
@@ -47,21 +50,53 @@ impl License {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+struct Author {
+    name: String,
+    email: String,
+}
+
+impl Author {
+    fn parse(text: &str) -> Result<Self, String> {
+        let invalid = || format!("invalid author `{text}`: expected `Name <email>`");
+        let (name, rest) = text.trim().split_once('<').ok_or_else(invalid)?;
+        let email = rest.strip_suffix('>').ok_or_else(invalid)?.trim();
+        let name = name.trim();
+        // Both end up inside TOML and YAML strings.
+        let clean = |part: &str| !part.is_empty() && !part.contains(['"', '\\', '<', '>', '\n']);
+        if !clean(name) || !clean(email) || !email.contains('@') {
+            return Err(invalid());
+        }
+        Ok(Self {
+            name: name.to_owned(),
+            email: email.to_owned(),
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct Options {
     name: String,
     lib: bool,
     license: License,
+    owner: String,
+    author: Author,
 }
 
-fn parse_args(args: &[String]) -> Result<Options, String> {
+/// Parses `init` arguments. `git` runs a git command and returns its trimmed output; it supplies
+/// the defaults for `--owner` (the `origin` remote) and `--author` (`user.name`, `user.email`).
+fn parse_args(args: &[String], git: impl Fn(&[&str]) -> Option<String>) -> Result<Options, String> {
     let mut name = None;
     let mut lib = false;
     let mut license = License::Dual;
+    let mut owner = None;
+    let mut author = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--lib" => lib = true,
             "--license" => license = License::parse(iter.next().ok_or("`--license` needs a value")?)?,
+            "--owner" => owner = Some(iter.next().ok_or("`--owner` needs a value")?.clone()),
+            "--author" => author = Some(iter.next().ok_or("`--author` needs a value")?.clone()),
             flag if flag.starts_with('-') => return Err(format!("unknown flag `{flag}`\n{USAGE}")),
             value if name.is_none() => name = Some(value.to_owned()),
             value => return Err(format!("unexpected argument `{value}`\n{USAGE}")),
@@ -69,7 +104,46 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     }
     let name = name.ok_or(USAGE)?;
     validate_name(&name)?;
-    Ok(Options { name, lib, license })
+    let owner = owner
+        .or_else(|| owner_from_remote(&git(&["remote", "get-url", "origin"])?))
+        .ok_or("can't detect your GitHub user from the `origin` remote: pass `--owner <github-user>`")?;
+    validate_owner(&owner)?;
+    let author = match author {
+        Some(author) => author,
+        None => match (git(&["config", "user.name"]), git(&["config", "user.email"])) {
+            (Some(name), Some(email)) => format!("{name} <{email}>"),
+            _ => return Err("git `user.name`/`user.email` not set: pass `--author \"Name <email>\"`".into()),
+        },
+    };
+    let author = Author::parse(&author)?;
+    Ok(Options {
+        name,
+        lib,
+        license,
+        owner,
+        author,
+    })
+}
+
+/// GitHub owner from a remote URL: `git@github.com:owner/repo.git` or `https://github.com/owner/repo`.
+fn owner_from_remote(url: &str) -> Option<String> {
+    let mut parts = url.trim_end_matches('/').rsplit(['/', ':']);
+    parts.next()?; // repository
+    parts
+        .next()
+        .filter(|owner| !owner.is_empty())
+        .map(str::to_owned)
+}
+
+fn validate_owner(owner: &str) -> Result<(), String> {
+    let well_formed = (1..=39).contains(&owner.len())
+        && !owner.starts_with('-')
+        && owner.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    if well_formed {
+        Ok(())
+    } else {
+        Err(format!("invalid GitHub user `{owner}`"))
+    }
 }
 
 fn validate_name(name: &str) -> Result<(), String> {
@@ -141,6 +215,10 @@ fn replace_tokens(text: &str, opts: &Options) -> String {
     text.replace(TOKEN_KEBAB, name)
         .replace(TOKEN_SNAKE, &snake)
         .replace(TOKEN_LICENSE, opts.license.spdx())
+        // The email contains the owner token: replace it first.
+        .replace(TOKEN_AUTHOR_EMAIL, &opts.author.email)
+        .replace(TOKEN_AUTHOR_NAME, &opts.author.name)
+        .replace(TOKEN_OWNER, &opts.owner)
 }
 
 /// Removes the `[[package]]` entry named `name` from a `Cargo.lock`.
@@ -248,11 +326,13 @@ fn rename(from: &Path, to: &Path) -> Result<(), String> {
     fs::rename(from, to).map_err(io_err(from))
 }
 
-fn copy(from: &Path, to: &Path) -> Result<(), String> {
+/// Copies a text asset from `xtask/assets`, replacing tokens on the way.
+fn copy_asset(from: &Path, to: &Path, opts: &Options) -> Result<(), String> {
     if let Some(parent) = to.parent() {
         fs::create_dir_all(parent).map_err(io_err(parent))?;
     }
-    fs::copy(from, to).map(drop).map_err(io_err(from))
+    let text = fs::read_to_string(from).map_err(io_err(from))?;
+    fs::write(to, replace_tokens(&text, opts)).map_err(io_err(to))
 }
 
 /// dist-generated release workflow, named after `tag-namespace`.
@@ -336,9 +416,9 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
         License::Agpl => {
             remove(&root.join("LICENSE-MIT"))?;
             remove(&root.join("LICENSE-APACHE"))?;
-            copy(&assets.join("LICENSE-AGPL"), &root.join("LICENSE"))?;
-            copy(&assets.join("CLA.md"), &root.join("CLA.md"))?;
-            copy(&assets.join("cla.yml"), &root.join(".github/workflows/cla.yml"))?;
+            copy_asset(&assets.join("LICENSE-AGPL"), &root.join("LICENSE"), opts)?;
+            copy_asset(&assets.join("CLA.md"), &root.join("CLA.md"), opts)?;
+            copy_asset(&assets.join("cla.yml"), &root.join(".github/workflows/cla.yml"), opts)?;
         },
     }
 
@@ -360,13 +440,25 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
     remove(&root.join("xtask"))
 }
 
+/// Runs git in `root` and returns its trimmed output, if it succeeded and printed something.
+fn git(root: &Path, args: &[&str]) -> Option<String> {
+    let out = Command::new("git")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .ok()?;
+    let text = String::from_utf8(out.stdout).ok()?;
+    let text = text.trim();
+    (out.status.success() && !text.is_empty()).then(|| text.to_owned())
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("xtask lives in the workspace root");
     let result = match args.split_first() {
-        Some((cmd, rest)) if cmd == "init" => parse_args(rest).and_then(|opts| {
+        Some((cmd, rest)) if cmd == "init" => parse_args(rest, |args| git(root, args)).and_then(|opts| {
             init(root, &opts)?;
             let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".into());
             let ok = Command::new(cargo)
@@ -405,6 +497,29 @@ mod tests {
         list.iter().map(ToString::to_string).collect()
     }
 
+    /// Stands in for git: a GitHub `origin` remote and a configured user.
+    fn fake_git(args: &[&str]) -> Option<String> {
+        match args {
+            ["remote", "get-url", "origin"] => Some("git@github.com:octo-org/demo.git".into()),
+            ["config", "user.name"] => Some("Octo Cat".into()),
+            ["config", "user.email"] => Some("octo@example.com".into()),
+            _ => None,
+        }
+    }
+
+    fn options(lib: bool, license: License) -> Options {
+        Options {
+            name: "demo".into(),
+            lib,
+            license,
+            owner: "octo-org".into(),
+            author: Author {
+                name: "Octo Cat".into(),
+                email: "octo@example.com".into(),
+            },
+        }
+    }
+
     #[test]
     fn accepts_valid_names() {
         for name in ["app", "my-app", "app2", "a-b-c"] {
@@ -430,43 +545,80 @@ mod tests {
     }
 
     #[test]
-    fn parses_defaults() {
-        let opts = parse_args(&args(&["demo"])).unwrap();
-        assert_eq!(
-            opts,
-            Options {
-                name: "demo".into(),
-                lib: false,
-                license: License::Dual
-            }
-        );
+    fn parses_defaults_from_git() {
+        let opts = parse_args(&args(&["demo"]), fake_git).unwrap();
+        assert_eq!(opts, options(false, License::Dual));
     }
 
     #[test]
     fn parses_all_flags() {
-        let opts = parse_args(&args(&["demo", "--lib", "--license", "agpl"])).unwrap();
+        let list = [
+            "demo",
+            "--lib",
+            "--license",
+            "agpl",
+            "--owner",
+            "me",
+            "--author",
+            " Me Too <me@x.dev> ",
+        ];
+        let opts = parse_args(&args(&list), |_| None).unwrap();
         assert_eq!(
             opts,
             Options {
-                name: "demo".into(),
-                lib: true,
-                license: License::Agpl
+                owner: "me".into(),
+                author: Author {
+                    name: "Me Too".into(),
+                    email: "me@x.dev".into(),
+                },
+                ..options(true, License::Agpl)
             }
         );
     }
 
     #[test]
+    fn requires_owner_and_author_without_git() {
+        assert!(parse_args(&args(&["demo", "--author", "A <a@b>"]), |_| None).is_err());
+        assert!(parse_args(&args(&["demo", "--owner", "me"]), |_| None).is_err());
+    }
+
+    #[test]
+    fn reads_owner_from_remotes() {
+        for url in [
+            "git@github.com:octo/repo.git",
+            "https://github.com/octo/repo",
+            "https://github.com/octo/repo.git/",
+            "ssh://git@github.com/octo/repo",
+        ] {
+            assert_eq!(owner_from_remote(url).as_deref(), Some("octo"), "{url}");
+        }
+        assert_eq!(owner_from_remote("repo"), None);
+    }
+
+    #[test]
+    fn rejects_bad_owner_and_author() {
+        for owner in ["", "-x", "a/b", "a b", "a\"b"] {
+            assert!(validate_owner(owner).is_err(), "{owner}");
+        }
+        for author in ["Name", "Name <>", "<a@b>", "Name <ab>", "Na\"me <a@b>", "Name a@b>"] {
+            assert!(Author::parse(author).is_err(), "{author}");
+        }
+    }
+
+    #[test]
     fn rejects_bad_args() {
-        let cases: [&[&str]; 6] = [
+        let cases: [&[&str]; 8] = [
             &[],
             &["--lib"],
             &["demo", "--license"],
             &["demo", "--license", "gpl"],
             &["demo", "--x"],
             &["a", "b"],
+            &["demo", "--owner"],
+            &["demo", "--author"],
         ];
         for list in cases {
-            assert!(parse_args(&args(list)).is_err(), "{list:?}");
+            assert!(parse_args(&args(list), fake_git).is_err(), "{list:?}");
         }
     }
 
@@ -502,8 +654,7 @@ mod tests {
         let text = "rust-template rust-template-core rust_template_core license = \"MIT OR Apache-2.0\"";
         let mut opts = Options {
             name: "foo-bar".into(),
-            lib: false,
-            license: License::Agpl,
+            ..options(false, License::Agpl)
         };
         assert_eq!(
             replace_tokens(text, &opts),
@@ -513,6 +664,11 @@ mod tests {
         assert_eq!(
             replace_tokens(text, &opts),
             "foo-bar foo-bar foo_bar license = \"AGPL-3.0-or-later\""
+        );
+        let identity = "Michael Baudler <hello@mrbandler.dev> github.com/mrbandler/x";
+        assert_eq!(
+            replace_tokens(identity, &opts),
+            "Octo Cat <octo@example.com> github.com/octo-org/x"
         );
     }
 
@@ -536,11 +692,7 @@ mod tests {
 
     #[test]
     fn keeps_groups_per_options() {
-        let opts = Options {
-            name: "x".into(),
-            lib: true,
-            license: License::Agpl,
-        };
+        let opts = options(true, License::Agpl);
         assert!(!keep_group("template", &opts));
         assert!(!keep_group("bin", &opts));
         assert!(!keep_group("dual", &opts));
@@ -614,8 +766,9 @@ mod tests {
                 "UpgradeCode='11111111-1111-4111-8111-111111111111'\n",
             ),
             ("xtask/assets/LICENSE-AGPL", "agpl"),
-            ("xtask/assets/CLA.md", "cla"),
-            ("xtask/assets/cla.yml", "name: CLA\n"),
+            ("xtask/assets/CLA.md", "cla by Michael Baudler"),
+            ("xtask/assets/cla.yml", "allowlist: mrbandler\n"),
+            ("SECURITY.md", "hello@mrbandler.dev\n"),
         ];
         for (path, content) in files {
             let path = root.join(path);
@@ -632,15 +785,7 @@ mod tests {
     #[test]
     fn init_binary_project_with_dual_license() {
         let root = fixture("bin");
-        init(
-            &root,
-            &Options {
-                name: "demo".into(),
-                lib: false,
-                license: License::Dual,
-            },
-        )
-        .unwrap();
+        init(&root, &options(false, License::Dual)).unwrap();
 
         assert_eq!(
             read(&root, "Cargo.toml"),
@@ -683,15 +828,7 @@ mod tests {
     #[test]
     fn init_library_project_with_agpl() {
         let root = fixture("lib");
-        init(
-            &root,
-            &Options {
-                name: "demo".into(),
-                lib: true,
-                license: License::Agpl,
-            },
-        )
-        .unwrap();
+        init(&root, &options(true, License::Agpl)).unwrap();
 
         assert_eq!(
             read(&root, "Cargo.toml"),
@@ -701,8 +838,9 @@ mod tests {
         assert_eq!(read(&root, "crates/demo/src/lib.rs"), "//! demo\n");
         assert_eq!(read(&root, "Cargo.lock"), "[[package]]\nname = \"demo\"\n");
         assert_eq!(read(&root, "LICENSE"), "agpl");
-        assert_eq!(read(&root, "CLA.md"), "cla");
-        assert_eq!(read(&root, ".github/workflows/cla.yml"), "name: CLA\n");
+        assert_eq!(read(&root, "CLA.md"), "cla by Octo Cat");
+        assert_eq!(read(&root, ".github/workflows/cla.yml"), "allowlist: octo-org\n");
+        assert_eq!(read(&root, "SECURITY.md"), "octo@example.com\n");
         for gone in [
             "LICENSE-MIT",
             "LICENSE-APACHE",
@@ -725,11 +863,7 @@ mod tests {
     #[test]
     fn init_refuses_to_run_twice() {
         let root = fixture("twice");
-        let opts = Options {
-            name: "demo".into(),
-            lib: false,
-            license: License::Mit,
-        };
+        let opts = options(false, License::Mit);
         init(&root, &opts).unwrap();
         assert_eq!(read(&root, "LICENSE"), "mit");
         assert!(
@@ -745,17 +879,7 @@ mod tests {
         let root = fixture("broken");
         fs::write(root.join("broken.md"), "<!-- init:bin:start -->\n").unwrap();
         let before = read(&root, "README.md");
-        assert!(
-            init(
-                &root,
-                &Options {
-                    name: "demo".into(),
-                    lib: false,
-                    license: License::Dual
-                }
-            )
-            .is_err()
-        );
+        assert!(init(&root, &options(false, License::Dual)).is_err());
         assert_eq!(read(&root, "README.md"), before);
         assert!(root.join("xtask").exists());
         fs::remove_dir_all(root).unwrap();

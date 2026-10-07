@@ -50,7 +50,7 @@ gh-setup:
     gh api --method POST "repos/{owner}/{repo}/pages" -f build_type=workflow
 # init:template:start
 
-# Turn this template into a new project: just init <name> [--lib] [--license dual|mit|apache|agpl]
+# Turn this template into a new project: just init <name> [--lib] [--license dual|mit|apache|agpl] [--owner <github-user>] [--author "Name <email>"]
 init *ARGS:
     cargo xtask init {{ ARGS }}
 # init:template:end

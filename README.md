@@ -1,17 +1,109 @@
 # rust-template
 <!-- init:template:start -->
 
-> **This is a template.** Click **Use this template** on GitHub, clone your new repo, then:
->
-> ```sh
-> just init <name> [--lib] [--license dual|mit|apache|agpl]
-> ```
->
-> `--lib` drops the binary crate and binary releases. `--license agpl` also adds a CLA.
-> `init` renames everything, strips this section, and deletes itself. Commit the result on a
-> branch and open a PR: commits to `main` are blocked by a hook (and by the ruleset once
-> `just gh-setup` ran). Then follow [Releasing](#releasing) once; until that setup is done the
-> release-plz and docs workflow runs fail.
+> **This is a template.** Follow [Using this template](#using-this-template) below to turn it
+> into your own project. That section is removed by `just init`.
+
+## Using this template
+
+### What you get
+
+- A Cargo workspace with a library crate (`<name>-core`) and, optionally, a CLI binary
+  (`<name>`) with `clap`, `miette` error reports and `tracing` logs.
+- Dev environment via [devenv](https://devenv.sh) + direnv, or plain `just setup` without Nix.
+- Git hooks ([prek](https://github.com/j178/prek)): fmt, clippy (pedantic), typos, zizmor, …
+- CI on Linux, macOS and Windows, MSRV check, cargo-deny, docs site on GitHub Pages.
+- Automated releases: [release-plz](https://release-plz.dev) for versions, changelog and
+  crates.io; [dist](https://opensource.axo.dev/cargo-dist/) for binaries, installers, MSI and
+  Homebrew; a Nix flake.
+
+### 1. Prerequisites
+
+- A GitHub account and the [GitHub CLI](https://cli.github.com) (`gh auth login`).
+- Either [Nix](https://nixos.org/download) with [direnv](https://direnv.net), or
+  [rustup](https://rustup.rs), [just](https://github.com/casey/just#installation) and
+  [cargo-binstall](https://github.com/cargo-bins/cargo-binstall#installation).
+- A [crates.io](https://crates.io) account if you want to publish (log in with `cargo login`).
+
+### 2. Create your repository
+
+Click **Use this template** on GitHub, or:
+
+```sh
+gh repo create <you>/<name> --template mrbandler/rust-template --public --clone
+cd <name>
+```
+
+`<name>` becomes your crate names on crates.io, which are permanent once published: lowercase
+letters, digits and single dashes, starting with a letter.
+
+### 3. Apply the repository settings
+
+GitHub copies only the files from a template, not its settings. Run once:
+
+```sh
+just gh-setup
+```
+
+This adds a ruleset for `main` (changes only through squash-merged PRs with passing `CI Success`
+and `PR Title` checks), makes squash merging with the PR title the only merge method, and
+enables GitHub Pages for the docs site. It fails if run a second time; that's expected.
+
+### 4. Set up the dev environment
+
+```sh
+direnv allow      # with Nix: installs all tools and the git hooks
+just setup        # without Nix: installs the tools via cargo-binstall and the git hooks
+```
+
+### 5. Initialize the project
+
+Commits to `main` are blocked, so work on a branch:
+
+```sh
+git switch -c chore/init
+just init <name> [--lib] [--license dual|mit|apache|agpl] [--owner <github-user>] [--author "Name <email>"]
+```
+
+| Option | Effect |
+| --- | --- |
+| *(none)* | Library `<name>-core` + binary `<name>`, binary releases via dist, MIT OR Apache-2.0. |
+| `--lib` | Library only, named `<name>`. Drops the binary crate, dist, installers, Homebrew and the Nix flake. |
+| `--license mit` / `apache` | Single license instead of the dual MIT OR Apache-2.0. |
+| `--license agpl` | AGPL-3.0-or-later, plus a CLA (`CLA.md`) and a workflow that asks contributors to sign it. |
+| `--owner <github-user>` | GitHub user or org for repo URLs, install commands and the Homebrew tap. Default: read from the `origin` remote. |
+| `--author "Name <email>"` | Name and email for `authors`, the licenses, `SECURITY.md`, the code of conduct and the MSI. Default: `git config user.name` / `user.email`. |
+
+`init` replaces `rust-template` everywhere (crate names, docs, workflows) and the template
+author's name, email and GitHub user with yours, removes the parts you didn't choose, sets up the license files, generates fresh MSI GUIDs, deletes this section and
+the `xtask` crate itself, and runs `cargo check`. It only works once: undo with
+`git checkout . && git clean -fd` if you want to run it again with other options.
+
+### 6. Make it yours
+
+Write real descriptions: the line under the title here and `description` in each
+`crates/*/Cargo.toml`. Check that nothing of the template author is left:
+`git grep -n -e mrbandler -e "Michael Baudler"` should print nothing.
+
+### 7. Check and open the PR
+
+```sh
+just check
+git add -A
+git commit -m "chore: initialize from template"
+git push -u origin chore/init
+gh pr create --fill
+```
+
+PR titles must be [conventional commits](https://www.conventionalcommits.org) (`feat:`, `fix:`,
+`chore:`, …); they become the commit message on `main` and drive the version bumps. Merge once
+the checks pass.
+
+### 8. Set up releases
+
+Follow the one-time setup in [Releasing](#releasing). Until that is done, the release-plz
+workflow fails on every push to `main`. After that, each merge updates a "chore: release" PR;
+merge it to ship your first release.
 <!-- init:template:end -->
 
 Short description of rust-template.
@@ -103,7 +195,7 @@ Until this is done, the release-plz and docs workflow runs fail.
    under Settings → Environments if you want.
 4. **Repository settings**: `just gh-setup` applies the ruleset for `main` (PR-only, squash,
    required checks), squash-only merges with the PR title as commit message, and GitHub Pages.
-   GitHub does not copy these from the template.
+   GitHub does not copy these from the template. Skip it if you already ran it.
 <!-- init:bin:start -->
 5. **Homebrew**: create the public repo `mrbandler/homebrew-tap` (once per account, shared by all
    projects), create a fine-grained token with *Contents* read/write on it, and add it as a

@@ -30,7 +30,8 @@ just lint       # all pre-commit hooks
 ## Template notes
 
 This repo is a template. Optional content is wrapped in `init:<group>:start` / `init:<group>:end`
-marker lines (groups: template, bin, dual, agpl) and the tokens `rust-template`, `rust_template`
-and the dual license string are replaced by `cargo xtask init`. Keep new template content
+marker lines (groups: template, bin, dual, agpl) and the tokens `rust-template`, `rust_template`,
+the dual license string, and the owner/author (`mrbandler`, `Michael Baudler`,
+`hello@mrbandler.dev`) are replaced by `cargo xtask init`. Keep new template content
 expressed through these tokens and markers, and extend `xtask/src/main.rs` tests when adding groups.
 <!-- init:template:end -->
