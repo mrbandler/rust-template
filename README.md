@@ -60,27 +60,54 @@ Without Nix (macOS, Linux, Windows): install [rustup](https://rustup.rs),
 
 ## Releasing
 
-Releases are automated with [release-plz](https://release-plz.dev): merging feature PRs keeps a
-"chore: release" PR up to date; merging that PR publishes to crates.io and tags the release.
+Releases are automated with [release-plz](https://release-plz.dev):
+
+1. Every PR is squash-merged, so each PR becomes one commit on `main` whose message is the PR
+   title. Titles must be [conventional commits](https://www.conventionalcommits.org) (checked
+   by the `PR Title` workflow): `fix:` bumps the patch version, `feat:` the minor, `feat!:` the
+   major.
+2. After every merge, release-plz updates a single open "chore: release" PR with the version
+   bumps and the new `CHANGELOG.md` entries. Don't edit it; it collects changes until you are
+   ready to release.
+3. Merging that PR publishes the crates to crates.io and pushes `<crate>-v<version>` tags.
 <!-- init:bin:start -->
-Tags of the binary crate trigger [dist](https://opensource.axo.dev/cargo-dist/), which builds
-the binaries and installers.
+4. The `rust-template-v<version>` tag triggers [dist](https://opensource.axo.dev/cargo-dist/),
+   which builds the binaries and installers, creates the GitHub Release and updates the
+   Homebrew formula. The binary crate itself is not published to crates.io.
 <!-- init:bin:end -->
 
-One-time setup per repository:
+### One-time setup per repository
 
-1. Create a GitHub App (once per account) with *Contents* and *Pull requests* read/write,
-   install it on the repo, and add the secrets `APP_CLIENT_ID` (the App's Client ID) and
-   `APP_PRIVATE_KEY`.
-2. Create an environment named `release` (Settings → Environments).
-3. Publish each crate once by hand: `cargo publish -p rust-template-core`.
-4. On crates.io, add a trusted publisher for each crate: this repo, workflow `release-plz.yml`,
-   environment `release`.
-5. Run `just gh-setup` (ruleset for `main`, squash-only merges, GitHub Pages).
+Until this is done, the release-plz and docs workflow runs fail.
+
+1. **GitHub App** (create once per account, install on each repo). Actions run with the
+   built-in `GITHUB_TOKEN`, and GitHub deliberately does not start other workflows from events
+   that token causes. With it, CI would never run on the release PR (so the required checks
+   never pass and it can't be merged) and the release tag would never trigger dist. A token
+   from your own App does trigger workflows.
+   - Settings → Developer settings → GitHub Apps → New GitHub App. No webhook needed.
+     Repository permissions: *Contents* and *Pull requests* read/write.
+   - Generate a private key, then install the App on this repo.
+   - Add the secrets: `gh secret set APP_CLIENT_ID` (the App's Client ID) and
+     `gh secret set APP_PRIVATE_KEY < key.pem`.
+
+   A fine-grained personal access token works too, but it acts as you and expires; the App
+   only has the permissions you gave it, on the repos it is installed on.
+2. **First publish by hand**: `cargo publish -p rust-template-core`. crates.io only lets you
+   configure a trusted publisher for a crate that already exists.
+3. **Trusted publisher** on crates.io (crate → Settings → Trusted Publishing) for each crate:
+   this repo, workflow `release-plz.yml`, environment `release`. The release job then gets a
+   short-lived publish token through GitHub's OIDC, and no crates.io token is stored anywhere.
+   The environment pins publishing to the one job that declares `environment: release`;
+   GitHub creates it on the first run. Add protection rules to it (e.g. only `main` may deploy)
+   under Settings → Environments if you want.
+4. **Repository settings**: `just gh-setup` applies the ruleset for `main` (PR-only, squash,
+   required checks), squash-only merges with the PR title as commit message, and GitHub Pages.
+   GitHub does not copy these from the template.
 <!-- init:bin:start -->
-6. Homebrew: create the public repo `mrbandler/homebrew-tap` (once per account, shared by all
-   projects), create a fine-grained token with *Contents* read/write on it, and add it to this
-   repo as the secret `HOMEBREW_TAP_TOKEN`. dist pushes the formula on every release.
+5. **Homebrew**: create the public repo `mrbandler/homebrew-tap` (once per account, shared by all
+   projects), create a fine-grained token with *Contents* read/write on it, and add it as a
+   secret: `gh secret set HOMEBREW_TAP_TOKEN`. dist pushes the formula on every release.
 <!-- init:bin:end -->
 
 ## License
