@@ -231,6 +231,9 @@ fn copy(from: &Path, to: &Path) -> Result<(), String> {
     fs::copy(from, to).map(drop).map_err(io_err(from))
 }
 
+/// dist-generated release workflow, named after `tag-namespace`.
+const RELEASE_WORKFLOW: &str = ".github/workflows/rust-template-v-release.yml";
+
 fn init(root: &Path, opts: &Options) -> Result<(), String> {
     let assets = root.join("xtask/assets");
     if !assets.is_dir() {
@@ -279,8 +282,8 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
         doomed.extend([
             "crates/rust-template",
             "dist-workspace.toml",
-            ".github/workflows/release.yml",
-            // Only holds ignores for the dist-generated release.yml.
+            RELEASE_WORKFLOW,
+            // Only holds ignores for the dist-generated release workflow.
             ".github/zizmor.yml",
             "flake.nix",
             "flake.lock",
@@ -316,6 +319,11 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
     )?;
     if !opts.lib {
         rename(&crates.join("rust-template"), &crates.join(&opts.name))?;
+        // dist names it after `tag-namespace` in dist-workspace.toml.
+        rename(
+            &root.join(RELEASE_WORKFLOW),
+            &root.join(format!(".github/workflows/{}-v-release.yml", opts.name)),
+        )?;
     }
     remove(&root.join("xtask"))
 }
@@ -520,7 +528,7 @@ mod tests {
             ("flake.lock", "{}"),
             (".cargo/config.toml", ""),
             (".github/workflows/template.yml", ""),
-            (".github/workflows/release.yml", ""),
+            (RELEASE_WORKFLOW, ""),
             (".github/zizmor.yml", ""),
             ("crates/rust-template-core/src/lib.rs", "//! rust_template_core\n"),
             ("crates/rust-template/src/main.rs", "use rust_template_core;\n"),
@@ -570,6 +578,8 @@ mod tests {
         assert!(root.join("crates/demo-core/src/lib.rs").is_file());
         assert!(root.join("LICENSE-MIT").is_file() && root.join("LICENSE-APACHE").is_file());
         assert!(root.join("dist-workspace.toml").is_file());
+        assert!(root.join(".github/zizmor.yml").is_file());
+        assert!(root.join(".github/workflows/demo-v-release.yml").is_file());
         assert_eq!(read(&root, "flake.nix"), "pname = \"demo\";\n");
         let upgrade = guid("demo", "11111111-1111-4111-8111-111111111111");
         let path = guid("demo", "22222222-2222-4222-8222-222222222222");
@@ -586,6 +596,7 @@ mod tests {
             ".cargo",
             ".github/workflows/template.yml",
             "crates/rust-template",
+            RELEASE_WORKFLOW,
         ] {
             assert!(!root.join(gone).exists(), "{gone}");
         }
@@ -619,7 +630,7 @@ mod tests {
             "crates/demo",
             "crates/rust-template",
             "dist-workspace.toml",
-            ".github/workflows/release.yml",
+            RELEASE_WORKFLOW,
             ".github/zizmor.yml",
             "flake.nix",
             "flake.lock",
