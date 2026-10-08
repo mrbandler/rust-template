@@ -13,8 +13,8 @@ pub use error::{Error, Result};
 /// # Examples
 ///
 /// ```
-/// assert_eq!(rust_template_core::greet("world")?, "Hello, world!");
-/// # Ok::<(), rust_template_core::Error>(())
+/// assert_eq!(rust_template::greet("world")?, "Hello, world!");
+/// # Ok::<(), rust_template::Error>(())
 /// ```
 pub fn greet(name: &str) -> Result<String> {
     let name = name.trim();

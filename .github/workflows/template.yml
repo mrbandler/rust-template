@@ -38,7 +38,8 @@ jobs:
         shell: bash
         # Through `just` as users run it. INIT_ARGS unquoted on purpose: split into arguments.
         # No git user on the runner, and a name with a space checks that quoting survives `just`.
-        run: just init $INIT_ARGS --owner octo-org --author-name "Octo Cat" --author-email octo@example.com
+        # demo-app is taken on crates.io; CI must not depend on registry state anyway.
+        run: just init $INIT_ARGS --owner octo-org --author-name "Octo Cat" --author-email octo@example.com --skip-name-check
         env:
           INIT_ARGS: ${{ matrix.args }}
       - name: No template leftovers

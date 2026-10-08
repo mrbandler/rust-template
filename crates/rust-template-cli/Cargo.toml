@@ -1,0 +1,39 @@
+[package]
+name = "rust-template-cli"
+description = "Command-line interface of rust-template."
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+
+# The package is `<name>-cli` because the library owns `<name>`; the command is still `<name>`.
+[[bin]]
+name = "rust-template"
+path = "src/main.rs"
+
+[dependencies]
+rust-template.workspace = true
+clap.workspace = true
+miette = { workspace = true, features = ["fancy"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true
+
+# dist skips `publish = false` packages unless told otherwise.
+[package.metadata.dist]
+dist = true
+# Homebrew formula named after the command, not the package.
+formula = "rust-template"
+
+[package.metadata.wix]
+upgrade-guid = "CB986D74-F058-40E3-B4E2-D38D1B341B2B"
+path-guid = "2DCF68D7-579B-4379-B289-F1BADDEDCCD6"
+license = false
+eula = false

@@ -21,7 +21,7 @@ readme = "README.md"
 thiserror = "2.0"
 miette = { version = "7.6", default-features = false, features = ["derive"] }
 # init:bin:start
-rust-template-core = { path = "crates/rust-template-core", version = "0.1.0" }
+rust-template = { path = "crates/rust-template", version = "0.1.0" }
 clap = { version = "4.6", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

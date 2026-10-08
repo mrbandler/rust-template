@@ -6,12 +6,10 @@ use std::{
     process::{Command, ExitCode},
 };
 
-const USAGE: &str = "usage: cargo xtask init <name> [--lib] [--license dual|mit|apache|agpl] [--owner <github-user>] [--author-name <name>] [--author-email <email>]";
+const USAGE: &str = "usage: cargo xtask init <name> [--lib] [--license dual|mit|apache|agpl] [--owner <github-user>] [--author-name <name>] [--author-email <email>] [--skip-name-check]";
 const TOKEN_KEBAB: &str = "rust-template";
 const TOKEN_SNAKE: &str = "rust_template";
 const TOKEN_LICENSE: &str = "MIT OR Apache-2.0";
-const TOKEN_CORE_KEBAB: &str = "rust-template-core";
-const TOKEN_CORE_SNAKE: &str = "rust_template_core";
 const TOKEN_OWNER: &str = "mrbandler";
 const TOKEN_AUTHOR_NAME: &str = "Michael Baudler";
 const TOKEN_AUTHOR_EMAIL: &str = "hello@mrbandler.dev";
@@ -80,6 +78,7 @@ struct Options {
     license: License,
     owner: String,
     author: Author,
+    check_name: bool,
 }
 
 /// Parses `init` arguments. `git` runs a git command and returns its trimmed output; it supplies
@@ -92,10 +91,12 @@ fn parse_args(args: &[String], git: impl Fn(&[&str]) -> Option<String>) -> Resul
     let mut owner = None;
     let mut author_name = None;
     let mut author_email = None;
+    let mut check_name = true;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--lib" => lib = true,
+            "--skip-name-check" => check_name = false,
             "--license" => license = License::parse(iter.next().ok_or("`--license` needs a value")?)?,
             "--owner" => owner = Some(iter.next().ok_or("`--owner` needs a value")?.clone()),
             "--author-name" => author_name = Some(iter.next().ok_or("`--author-name` needs a value")?.clone()),
@@ -124,6 +125,7 @@ fn parse_args(args: &[String], git: impl Fn(&[&str]) -> Option<String>) -> Resul
         license,
         owner,
         author,
+        check_name,
     })
 }
 
@@ -207,13 +209,7 @@ fn apply_markers(text: &str, keep: impl Fn(&str) -> bool) -> Result<String, Stri
 fn replace_tokens(text: &str, opts: &Options) -> String {
     let name = &opts.name;
     let snake = name.replace('-', "_");
-    // A library-only project has a single crate named after the project, not `<name>-core`.
-    let text = if opts.lib {
-        text.replace(TOKEN_CORE_KEBAB, name)
-            .replace(TOKEN_CORE_SNAKE, &snake)
-    } else {
-        text.to_owned()
-    };
+    // Also covers the CLI crate: `rust-template-cli` becomes `<name>-cli`.
     text.replace(TOKEN_KEBAB, name)
         .replace(TOKEN_SNAKE, &snake)
         .replace(TOKEN_LICENSE, opts.license.spdx())
@@ -226,9 +222,12 @@ fn replace_tokens(text: &str, opts: &Options) -> String {
 /// Removes the `[[package]]` entry named `name` from a `Cargo.lock`.
 fn drop_lock_package(lock: &str, name: &str) -> String {
     let entry = format!("[[package]]\nname = \"{name}\"\n");
-    lock.split_inclusive("\n\n")
+    let kept: String = lock
+        .split_inclusive("\n\n")
         .filter(|block| !block.starts_with(&entry))
-        .collect()
+        .collect();
+    // Dropping the last block leaves the separator behind; lockfiles end with a single newline.
+    format!("{}\n", kept.trim_end_matches('\n'))
 }
 
 fn keep_group(group: &str, opts: &Options) -> bool {
@@ -337,8 +336,10 @@ fn copy_asset(from: &Path, to: &Path, opts: &Options) -> Result<(), String> {
     fs::write(to, replace_tokens(&text, opts)).map_err(io_err(to))
 }
 
+/// The CLI crate; the library is named after the project.
+const CLI_CRATE: &str = "rust-template-cli";
 /// dist-generated release workflow, named after `tag-namespace`.
-const RELEASE_WORKFLOW: &str = ".github/workflows/rust-template-v-release.yml";
+const RELEASE_WORKFLOW: &str = ".github/workflows/rust-template-cli-v-release.yml";
 
 fn init(root: &Path, opts: &Options) -> Result<(), String> {
     let assets = root.join("xtask/assets");
@@ -350,7 +351,7 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
     let guid_swaps: Vec<(String, String)> = if opts.lib {
         Vec::new()
     } else {
-        let manifest = fs::read_to_string(root.join("crates/rust-template/Cargo.toml")).unwrap_or_default();
+        let manifest = fs::read_to_string(root.join("crates").join(CLI_CRATE).join("Cargo.toml")).unwrap_or_default();
         wix_guids(&manifest)
             .into_iter()
             .map(|old| {
@@ -371,9 +372,9 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
     let mut rewrites = Vec::new();
     for path in files {
         let Ok(text) = fs::read_to_string(&path) else { continue }; // binary file
-        // With `--lib` the binary and core crate would both be renamed to `<name>`: drop the binary.
+        // With `--lib` the CLI crate is removed below: drop it from the lockfile too.
         let source = if opts.lib && path == root.join("Cargo.lock") {
-            drop_lock_package(&text, TOKEN_KEBAB)
+            drop_lock_package(&text, CLI_CRATE)
         } else {
             text.clone()
         };
@@ -398,7 +399,7 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
     let mut doomed = vec![".github/workflows/template.yml", ".cargo"];
     if opts.lib {
         doomed.extend([
-            "crates/rust-template",
+            "crates/rust-template-cli",
             "dist-workspace.toml",
             RELEASE_WORKFLOW,
             // Only holds ignores for the dist-generated release workflow.
@@ -415,26 +416,19 @@ fn init(root: &Path, opts: &Options) -> Result<(), String> {
     apply_license(root, &assets, opts)?;
 
     let crates = root.join("crates");
-    let core = if opts.lib {
-        opts.name.clone()
+    let cli = format!("{}-cli", opts.name);
+    if opts.lib {
+        println!("  crates: {}", opts.name);
     } else {
-        format!("{}-core", opts.name)
-    };
-    println!(
-        "  crates: {core}{}",
-        if opts.lib {
-            String::new()
-        } else {
-            format!(", {}", opts.name)
-        }
-    );
-    rename(&crates.join("rust-template-core"), &crates.join(core))?;
+        println!("  crates: {} (library), {cli} (command `{}`)", opts.name, opts.name);
+    }
+    rename(&crates.join(TOKEN_KEBAB), &crates.join(&opts.name))?;
     if !opts.lib {
-        rename(&crates.join("rust-template"), &crates.join(&opts.name))?;
+        rename(&crates.join(CLI_CRATE), &crates.join(&cli))?;
         // dist names it after `tag-namespace` in dist-workspace.toml.
         rename(
             &root.join(RELEASE_WORKFLOW),
-            &root.join(format!(".github/workflows/{}-v-release.yml", opts.name)),
+            &root.join(format!(".github/workflows/{cli}-v-release.yml")),
         )?;
     }
     println!("  removing xtask");
@@ -465,6 +459,43 @@ fn apply_license(root: &Path, assets: &Path, opts: &Options) -> Result<(), Strin
     Ok(())
 }
 
+/// Whether `cargo search` output lists `name` itself. crates.io lists an exact match first and
+/// treats `-` and `_` as the same name.
+fn search_lists(output: &str, name: &str) -> bool {
+    output
+        .lines()
+        .next()
+        .and_then(|line| line.split_once(" = "))
+        .is_some_and(|(found, _)| found.replace('_', "-") == name)
+}
+
+/// Fails if the crate `init` would publish already exists on crates.io. Only warns when the
+/// search itself fails (e.g. offline), since the name may well be free.
+fn check_name(cargo: &str, opts: &Options) -> Result<(), String> {
+    // The library is the crate that goes to crates.io; the CLI has `publish = false`.
+    let name = &opts.name;
+    println!("Checking that `{name}` is free on crates.io");
+    let out = Command::new(cargo)
+        .args(["search", name, "--limit", "1"])
+        .output();
+    match out {
+        Ok(out) if out.status.success() => {
+            if search_lists(&String::from_utf8_lossy(&out.stdout), name) {
+                Err(format!(
+                    "`{name}` is already taken on crates.io (https://crates.io/crates/{name}): pick another \
+                     name, or pass `--skip-name-check` if that crate is yours"
+                ))
+            } else {
+                Ok(())
+            }
+        },
+        _ => {
+            println!("  warning: couldn't search crates.io; check https://crates.io/crates/{name} yourself");
+            Ok(())
+        },
+    }
+}
+
 /// Runs git in `root` and returns its trimmed output, if it succeeded and printed something.
 fn git(root: &Path, args: &[&str]) -> Option<String> {
     let out = Command::new("git")
@@ -484,9 +515,12 @@ fn main() -> ExitCode {
         .expect("xtask lives in the workspace root");
     let result = match args.split_first() {
         Some((cmd, rest)) if cmd == "init" => parse_args(rest, |args| git(root, args)).and_then(|opts| {
+            let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+            if opts.check_name {
+                check_name(&cargo, &opts)?;
+            }
             init(root, &opts)?;
             println!("Running `cargo check` (the first run compiles all dependencies)");
-            let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".into());
             let ok = Command::new(cargo)
                 .args(["check", "--workspace"])
                 .current_dir(root)
@@ -547,6 +581,7 @@ mod tests {
                 name: "Octo Cat".into(),
                 email: "octo@example.com".into(),
             },
+            check_name: true,
         }
     }
 
@@ -593,6 +628,7 @@ mod tests {
             " Me Too ",
             "--author-email",
             "me@x.dev",
+            "--skip-name-check",
         ];
         let opts = parse_args(&args(&list), |_| None).unwrap();
         assert_eq!(
@@ -603,6 +639,7 @@ mod tests {
                     name: "Me Too".into(),
                     email: "me@x.dev".into(),
                 },
+                check_name: false,
                 ..options(true, License::Agpl)
             }
         );
@@ -617,6 +654,15 @@ mod tests {
             list.drain(skip..skip + 2);
             assert!(parse_args(&args(&list), |_| None).is_err(), "{list:?}");
         }
+    }
+
+    #[test]
+    fn finds_exact_matches_in_search_output() {
+        let out = "writ-core = \"0.1.0\"    # Storage and selection for writ.\n... and 3 crates more\n";
+        assert!(search_lists(out, "writ-core"));
+        assert!(search_lists("writ_core = \"0.1.0\"\n", "writ-core"));
+        assert!(!search_lists("writ-core-extra = \"1.0.0\"\n", "writ-core"));
+        assert!(!search_lists("", "writ-core"));
     }
 
     #[test]
@@ -695,19 +741,14 @@ mod tests {
 
     #[test]
     fn replaces_all_tokens() {
-        let text = "rust-template rust-template-core rust_template_core license = \"MIT OR Apache-2.0\"";
-        let mut opts = Options {
+        let text = "rust-template rust-template-cli rust_template license = \"MIT OR Apache-2.0\"";
+        let opts = Options {
             name: "foo-bar".into(),
             ..options(false, License::Agpl)
         };
         assert_eq!(
             replace_tokens(text, &opts),
-            "foo-bar foo-bar-core foo_bar_core license = \"AGPL-3.0-or-later\""
-        );
-        opts.lib = true;
-        assert_eq!(
-            replace_tokens(text, &opts),
-            "foo-bar foo-bar foo_bar license = \"AGPL-3.0-or-later\""
+            "foo-bar foo-bar-cli foo_bar license = \"AGPL-3.0-or-later\""
         );
         let identity = "Michael Baudler <hello@mrbandler.dev> github.com/mrbandler/x";
         assert_eq!(
@@ -766,10 +807,10 @@ mod tests {
 
     #[test]
     fn drops_one_lock_package() {
-        let lock = "version = 4\n\n[[package]]\nname = \"rust-template\"\nversion = \"0.1.0\"\n\n[[package]]\nname = \"rust-template-core\"\nversion = \"0.1.0\"\n";
+        let lock = "version = 4\n\n[[package]]\nname = \"rust-template\"\nversion = \"0.1.0\"\n\n[[package]]\nname = \"rust-template-cli\"\nversion = \"0.1.0\"\n";
         assert_eq!(
-            drop_lock_package(lock, "rust-template"),
-            "version = 4\n\n[[package]]\nname = \"rust-template-core\"\nversion = \"0.1.0\"\n"
+            drop_lock_package(lock, "rust-template-cli"),
+            "version = 4\n\n[[package]]\nname = \"rust-template\"\nversion = \"0.1.0\"\n"
         );
     }
 
@@ -788,7 +829,7 @@ mod tests {
             ),
             (
                 "Cargo.lock",
-                "[[package]]\nname = \"rust-template\"\n\n[[package]]\nname = \"rust-template-core\"\n",
+                "[[package]]\nname = \"rust-template\"\n\n[[package]]\nname = \"rust-template-cli\"\n",
             ),
             ("LICENSE-MIT", "mit"),
             ("LICENSE-APACHE", "apache"),
@@ -799,14 +840,14 @@ mod tests {
             (".github/workflows/template.yml", ""),
             (RELEASE_WORKFLOW, ""),
             (".github/zizmor.yml", ""),
-            ("crates/rust-template-core/src/lib.rs", "//! rust_template_core\n"),
-            ("crates/rust-template/src/main.rs", "use rust_template_core;\n"),
+            ("crates/rust-template/src/lib.rs", "//! rust_template\n"),
+            ("crates/rust-template-cli/src/main.rs", "use rust_template;\n"),
             (
-                "crates/rust-template/Cargo.toml",
+                "crates/rust-template-cli/Cargo.toml",
                 "[package.metadata.wix]\nupgrade-guid = \"11111111-1111-4111-8111-111111111111\"\npath-guid = \"22222222-2222-4222-8222-222222222222\"\n",
             ),
             (
-                "crates/rust-template/wix/main.wxs",
+                "crates/rust-template-cli/wix/main.wxs",
                 "UpgradeCode='11111111-1111-4111-8111-111111111111'\n",
             ),
             ("xtask/assets/LICENSE-AGPL", "agpl"),
@@ -836,25 +877,28 @@ mod tests {
             "members = [\n]\nlicense = \"MIT OR Apache-2.0\"\nclap = \"4\"\n"
         );
         assert_eq!(read(&root, "README.md"), "# demo\ndual\n");
-        assert_eq!(read(&root, "crates/demo/src/main.rs"), "use demo_core;\n");
+        assert_eq!(read(&root, "crates/demo-cli/src/main.rs"), "use demo;\n");
         assert_eq!(
             read(&root, "Cargo.lock"),
-            "[[package]]\nname = \"demo\"\n\n[[package]]\nname = \"demo-core\"\n"
+            "[[package]]\nname = \"demo\"\n\n[[package]]\nname = \"demo-cli\"\n"
         );
-        assert!(root.join("crates/demo-core/src/lib.rs").is_file());
+        assert!(root.join("crates/demo/src/lib.rs").is_file());
         assert!(root.join("LICENSE-MIT").is_file() && root.join("LICENSE-APACHE").is_file());
         assert!(root.join("dist-workspace.toml").is_file());
         assert!(root.join(".github/zizmor.yml").is_file());
-        assert!(root.join(".github/workflows/demo-v-release.yml").is_file());
+        assert!(
+            root.join(".github/workflows/demo-cli-v-release.yml")
+                .is_file()
+        );
         assert_eq!(read(&root, "flake.nix"), "pname = \"demo\";\n");
         let upgrade = guid("demo", "11111111-1111-4111-8111-111111111111");
         let path = guid("demo", "22222222-2222-4222-8222-222222222222");
         assert_eq!(
-            wix_guids(&read(&root, "crates/demo/Cargo.toml")),
+            wix_guids(&read(&root, "crates/demo-cli/Cargo.toml")),
             [upgrade.clone(), path]
         );
         assert_eq!(
-            read(&root, "crates/demo/wix/main.wxs"),
+            read(&root, "crates/demo-cli/wix/main.wxs"),
             format!("UpgradeCode='{upgrade}'\n")
         );
         for gone in [
@@ -862,6 +906,7 @@ mod tests {
             ".cargo",
             ".github/workflows/template.yml",
             "crates/rust-template",
+            "crates/rust-template-cli",
             RELEASE_WORKFLOW,
         ] {
             assert!(!root.join(gone).exists(), "{gone}");
@@ -888,10 +933,9 @@ mod tests {
         for gone in [
             "LICENSE-MIT",
             "LICENSE-APACHE",
-            "crates/demo-core",
-            "crates/demo/src/main.rs",
+            "crates/demo-cli",
             "crates/rust-template",
-            "crates/rust-template-core",
+            "crates/rust-template-cli",
             "dist-workspace.toml",
             RELEASE_WORKFLOW,
             ".github/zizmor.yml",

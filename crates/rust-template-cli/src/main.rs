@@ -20,7 +20,7 @@ fn main() -> miette::Result<()> {
 
     let cli = Cli::parse();
     tracing::debug!(?cli, "parsed arguments");
-    println!("{}", rust_template_core::greet(&cli.name)?);
+    println!("{}", rust_template::greet(&cli.name)?);
     Ok(())
 }
 

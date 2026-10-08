@@ -31,7 +31,7 @@ commit_parsers = [
 # The binary is not published to crates.io (publish = false). git_only makes release-plz still
 # version, changelog and tag it; dist then builds the GitHub Release from that tag.
 [[package]]
-name = "rust-template"
+name = "rust-template-cli"
 git_only = true
 git_release_enable = false
 # dist takes the GitHub Release notes from a top-level CHANGELOG.md.

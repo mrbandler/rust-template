@@ -24,9 +24,9 @@ body:
       label: Area
       description: Which part of rust-template does this feature relate to?
       options:
-        - Library (rust-template-core)
+        - Library (rust-template)
         # init:bin:start
-        - CLI (rust-template)
+        - CLI (rust-template-cli)
         # init:bin:end
         - Documentation
         - Other
