@@ -8,8 +8,10 @@
 
 ### What you get
 
-- A Cargo workspace with a library crate (`<name>-core`) and, optionally, a CLI binary
-  (`<name>`) with `clap`, `miette` error reports and `tracing` logs.
+- A Cargo workspace with a library crate (`<name>`) and, optionally, a CLI crate (`<name>-cli`,
+  installing the command `<name>`) with `clap`, `miette` error reports and `tracing` logs. The
+  library owns the crates.io name, so it can be embedded with `cargo add <name>`. Add more crates
+  (e.g. `<name>-syntax`) under `crates/` as the project grows.
 - Dev environment via [devenv](https://devenv.sh) + direnv, or plain `just setup` without Nix.
 - Git hooks ([prek](https://github.com/j178/prek)): fmt, clippy (pedantic), typos, zizmor, …
 - CI on Linux, macOS and Windows, MSRV check, cargo-deny, docs site on GitHub Pages.
@@ -35,7 +37,9 @@ cd <name>
 ```
 
 `<name>` becomes your crate names on crates.io, which are permanent once published: lowercase
-letters, digits and single dashes, starting with a letter.
+letters, digits and single dashes, starting with a letter. Check that it's free first:
+`cargo search <name>` must not list that exact name. `init` checks this too and refuses taken
+names.
 
 ### 3. Apply the repository settings
 
@@ -62,18 +66,19 @@ Commits to `main` are blocked, so work on a branch:
 
 ```sh
 git switch -c chore/init
-just init <name> [--lib] [--license dual|mit|apache|agpl] [--owner <github-user>] [--author-name <name>] [--author-email <email>]
+just init <name> [--lib] [--license dual|mit|apache|agpl] [--owner <github-user>] [--author-name <name>] [--author-email <email>] [--skip-name-check]
 ```
 
 | Option | Effect |
 | --- | --- |
-| *(none)* | Library `<name>-core` + binary `<name>`, binary releases via dist, MIT OR Apache-2.0. |
-| `--lib` | Library only, named `<name>`. Drops the binary crate, dist, installers, Homebrew and the Nix flake. |
+| *(none)* | Library `<name>` + CLI crate `<name>-cli` (installs the command `<name>`), binary releases via dist, MIT OR Apache-2.0. |
+| `--lib` | Library only. Drops the CLI crate, dist, installers, Homebrew and the Nix flake. |
 | `--license mit` / `apache` | Single license instead of the dual MIT OR Apache-2.0. |
 | `--license agpl` | AGPL-3.0-or-later, plus a CLA (`CLA.md`) and a workflow that asks contributors to sign it. |
 | `--owner <github-user>` | GitHub user or org for repo URLs, install commands and the Homebrew tap. Default: read from the `origin` remote. |
 | `--author-name <name>` | Your name for `authors`, the licenses, the code of conduct, the docs and the MSI. Default: `git config user.name`. |
 | `--author-email <email>` | Your email for `authors`, `SECURITY.md` and the code of conduct. Default: `git config user.email`. |
+| `--skip-name-check` | Skip the check that the library crate name `<name>` is still free on crates.io. Only for names you already own. |
 
 `init` replaces `rust-template` everywhere (crate names, docs, workflows) and the template
 author's name, email and GitHub user with yours, removes the parts you didn't choose, sets up the license files, generates fresh MSI GUIDs, deletes this section and
@@ -114,12 +119,12 @@ Short description of rust-template.
 
 ```sh
 # macOS / Linux
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/mrbandler/rust-template/releases/latest/download/rust-template-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/mrbandler/rust-template/releases/latest/download/rust-template-cli-installer.sh | sh
 ```
 
 ```powershell
 # Windows
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/mrbandler/rust-template/releases/latest/download/rust-template-installer.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/mrbandler/rust-template/releases/latest/download/rust-template-cli-installer.ps1 | iex"
 ```
 
 ```sh
@@ -127,7 +132,7 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/mrbandler/rust-tem
 brew install mrbandler/tap/rust-template
 ```
 
-Windows installer (MSI): [rust-template-x86_64-pc-windows-msvc.msi](https://github.com/mrbandler/rust-template/releases/latest/download/rust-template-x86_64-pc-windows-msvc.msi)
+Windows installer (MSI): [rust-template-cli-x86_64-pc-windows-msvc.msi](https://github.com/mrbandler/rust-template/releases/latest/download/rust-template-cli-x86_64-pc-windows-msvc.msi)
 
 ```sh
 # Nix: try it without installing, or install it
@@ -137,7 +142,7 @@ nix profile install github:mrbandler/rust-template
 
 ```sh
 # Prebuilt binary via cargo-binstall
-cargo binstall --git https://github.com/mrbandler/rust-template rust-template
+cargo binstall --git https://github.com/mrbandler/rust-template rust-template-cli
 ```
 <!-- init:bin:end -->
 
@@ -164,9 +169,9 @@ Releases are automated with [release-plz](https://release-plz.dev):
    ready to release.
 3. Merging that PR publishes the crates to crates.io and pushes `<crate>-v<version>` tags.
 <!-- init:bin:start -->
-4. The `rust-template-v<version>` tag triggers [dist](https://opensource.axo.dev/cargo-dist/),
-   which builds the binaries and installers, creates the GitHub Release and updates the
-   Homebrew formula. The binary crate itself is not published to crates.io.
+4. The `rust-template-cli-v<version>` tag triggers [dist](https://opensource.axo.dev/cargo-dist/),
+   which builds the `rust-template` command, the installers and the GitHub Release, and updates the
+   Homebrew formula. The CLI crate (`rust-template-cli`) itself is not published to crates.io.
 <!-- init:bin:end -->
 
 ### One-time setup per repository
@@ -186,7 +191,7 @@ Until this is done, the release-plz and docs workflow runs fail.
 
    A fine-grained personal access token works too, but it acts as you and expires; the App
    only has the permissions you gave it, on the repos it is installed on.
-2. **First publish by hand**: `cargo publish -p rust-template-core`. crates.io only lets you
+2. **First publish by hand**: `cargo publish -p rust-template`. crates.io only lets you
    configure a trusted publisher for a crate that already exists.
 3. **Trusted publisher** on crates.io (crate → Settings → Trusted Publishing) for each crate:
    this repo, workflow `release-plz.yml`, environment `release`. The release job then gets a

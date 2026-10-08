@@ -18,8 +18,8 @@ targets = [
 install-path = "CARGO_HOME"
 install-updater = false
 github-attestations = true
-# Only binary tags trigger dist; library tags (rust-template-core-v…) are released by release-plz.
-tag-namespace = "rust-template-v"
+# Only CLI tags trigger dist; library tags (rust-template-v…) are released by release-plz.
+tag-namespace = "rust-template-cli-v"
 # Dependabot owns the action SHAs in the generated release workflow (it can't edit this file),
 # so dist must not fail when they differ from what `dist generate` would write. After running
 # `dist generate`, re-pin the actions to SHAs (zizmor in CI flags unpinned ones).

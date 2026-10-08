@@ -4,9 +4,9 @@ rust-template — Rust workspace (edition 2024).
 
 ## Layout
 
-- `crates/rust-template-core` — library: typed errors with `thiserror` + `miette::Diagnostic`.
+- `crates/rust-template` — library: typed errors with `thiserror` + `miette::Diagnostic`.
 <!-- init:bin:start -->
-- `crates/rust-template` — binary: `clap`, renders errors with `miette` (fancy), logs via `tracing` (`RUST_LOG`).
+- `crates/rust-template-cli` — binary `rust-template`: `clap`, renders errors with `miette` (fancy), logs via `tracing` (`RUST_LOG`).
 <!-- init:bin:end -->
 
 ## Commands

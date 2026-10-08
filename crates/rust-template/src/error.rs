@@ -1,4 +1,4 @@
-//! Error types of `rust-template-core`.
+//! Error types of `rust-template`.
 
 use miette::Diagnostic;
 use thiserror::Error;
@@ -8,7 +8,7 @@ use thiserror::Error;
 pub enum Error {
     /// The given name was empty or whitespace only.
     #[error("name must not be empty")]
-    #[diagnostic(code(rust_template_core::empty_name), help("pass a name, e.g. `world`"))]
+    #[diagnostic(code(rust_template::empty_name), help("pass a name, e.g. `world`"))]
     EmptyName,
 }
 

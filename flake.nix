@@ -50,8 +50,8 @@
             src = pkgs.lib.cleanSource ./.;
             # Dependency hashes come from Cargo.lock; nothing to update by hand.
             cargoLock.lockFile = ./Cargo.lock;
-            cargoBuildFlags = [ "--package" "rust-template" ];
-            cargoTestFlags = [ "--package" "rust-template" ];
+            cargoBuildFlags = [ "--package" "rust-template-cli" ];
+            cargoTestFlags = [ "--package" "rust-template-cli" ];
             meta.mainProgram = "rust-template";
           };
         }
